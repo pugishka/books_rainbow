@@ -8,7 +8,7 @@ import numpy as np
 import tkinter as tk
 from tkinter import filedialog
 import colorsys
-# from prompt_toolkit import prompt
+import time
 
 
 def rgb_to_hex(rgb):
@@ -150,39 +150,49 @@ def dominant_colors(im, max_num_colors, mode):
 
     Args:
         im (Image): image to analyze
+
         max_num_colors (int): maximum number of colors to find
+
         mode (str):  use "RGB" or "HSV" colors
 
     Returns:
-        dominant_colors (DataFrame): each row is a dominant color in the
-        image with its RGB values
-        colors (DataFrame): each row is a pixel of the image with its RGB or
-        HSV values
-    """
-    if mode == "HSV":
-        colors = pd.DataFrame(columns=["red", "green", "blue"])
-    else:
-        colors = pd.DataFrame(columns=["hue", "value", "saturation"])
+        dominant_colors (:obj:`list` of DataFrame): list of DataFrame where
+            each row is a dominant color in the image with its RGB values,
+            based on RGB values, HSV values, or both
 
-    for i in range(im.size[1]):
-        for j in range(im.size[0]):
-            p = im.getpixel((i, j))
-            if mode == "HSV":
-                p = colorsys.rgb_to_hsv(p[0], p[1], p[2])
-            colors.loc[colors.shape[0]] = p
+        colors (:obj:`list` of DataFrame): list of DataFrame where each row
+            is a pixel of the image with its RGB or HSV values
+    """
+    colors = []
+    if mode == "RGB":
+        r = np.array(im.getdata())
+        colors.append(pd.DataFrame(r, columns=["red", "green", "blue"]))
+    elif mode == "HSV":
+        r = [colorsys.rgb_to_hsv(r[i][0], r[i][1], r[i][2])
+             for i in range(r.shape[0])]
+        colors.append(pd.DataFrame(r, columns=["hue", "saturation", "value"]))
+    else:
+        r = np.array(im.getdata())
+        colors.append(pd.DataFrame(r, columns=["red", "green", "blue"]))
+        r = [colorsys.rgb_to_hsv(r[i][0], r[i][1], r[i][2])
+             for i in range(r.shape[0])]
+        colors.append(pd.DataFrame(r, columns=["hue", "saturation", "value"]))
 
     scaler = MinMaxScaler()
-    c_scale = pd.DataFrame(scaler.fit_transform(colors))
-    km = KMeans(n_clusters=max_num_colors)
-    km.fit_predict(c_scale)
-    dominant_colors = pd.DataFrame(
-        scaler.inverse_transform(km.cluster_centers_),
-        columns=["red", "green", "blue"])
-    if mode == "HSV":
-        for i, h, s, v in dominant_colors.itertuples():
-            rgb = colorsys.hsv_to_rgb(h, s, v)
-            dominant_colors.loc[i] = rgb
-    dominant_colors = dominant_colors_clean(dominant_colors, 10).astype(int)
+    dominant_colors = []
+    for i in range(len(colors)):
+        c_scale = pd.DataFrame(scaler.fit_transform(colors[i]))
+        km = KMeans(n_clusters=max_num_colors)
+        km.fit_predict(c_scale)
+        dominant_colors.append(pd.DataFrame(
+            scaler.inverse_transform(km.cluster_centers_),
+            columns=["red", "green", "blue"]))
+        if colors[i].columns.tolist() == ["hue", "saturation", "value"]:
+            for ind, h, s, v in dominant_colors[i].itertuples():
+                rgb = colorsys.hsv_to_rgb(h, s, v)
+                dominant_colors[i].loc[ind] = rgb
+        dominant_colors[i] = \
+            dominant_colors_clean(dominant_colors[i], 10).astype(int)
     return dominant_colors, colors
 
 
@@ -220,9 +230,13 @@ def get_urls_from_file():
     Returns:
         urls (DataFrame): column of URLs from the CSV file
     """
-    file = pd.read_csv(get_file())
-    column = prompt("Number of the column containing the covers :\n")
+    url = "C:/Users/charo/Downloads/Export-e8d05104-a27b-4b14-ace2" \
+          "-f7ddae1ea7c7/Bookshelf cafd6.csv"
+    file = pd.read_csv(url)
+    #column = input("Number of the column containing the covers :\n")
+    column = 4
     urls = file.iloc[:, int(column) - 1]
+    return urls
 
 
 def add_color_columns(file, max_num_colors, mode):
@@ -251,56 +265,152 @@ def add_color_columns(file, max_num_colors, mode):
     #     file["Color " + str(i) + " : blue"] = empty_column
     #     file["Color " + str(i) + " : Hex code"] = empty_column
 
-for j in range(urls.size):
-    addColors(j, file, dominantColors(getImage(urls[j]), 4), lastColumn)
 
-hexColors = pd.DataFrame(file.loc[:, "Color 1 : Hex code"].copy())
-hue = []
-value = []
-saturation = []
-notionEq = []
+def analyse(urls):
+    """
+    Analyses each cover at the URL and finds their RGB, HSV and dominant colors.
 
-for i in range(hexColors.size):
-    r = ImageColor.getcolor(hexColors.iloc[i, 0], "RGB")[0]
-    g = ImageColor.getcolor(hexColors.iloc[i, 0], "RGB")[1]
-    b = ImageColor.getcolor(hexColors.iloc[i, 0], "RGB")[2]
-    hsv = colorsys.rgb_to_hsv(r, g, b)
-    hue.append(hsv[0])
-    value.append(hsv[1])
-    saturation.append(hsv[2])
-    notionEq.append("$$\color{" + str(hexColors.iloc[i, 0]) + "}\\" + str(hexColors.iloc[i, 0]) + "$$")
+    Args:
+        urls (:obj:`list` of str): list of the covers' URLs
 
-file["Hue"] = hue
-file["Value"] = value
-file["Saturation"] = saturation
-file["Notion equation"] = notionEq
+    Returns:
+        dominant_colors_all (:obj:`list` of :obj:`list` of DataFrame): list
+            for each cover of lists containing a DataFrame of the dominant
+            colors found with RGB mode and HSV mode
 
-byHue = file.loc[:, ["Color 1 : Hex code", "Hue", "Saturation"]].copy()
-index = np.arange(0, byHue.shape[0], 1)
-byHue["ogIndex"] = index
-for i in range(byHue.shape[0]):
-    byHue.loc[i, "Hue"] = 5 * round((byHue.loc[i, "Hue"] * 100) / 5)
-byHue = byHue.sort_values(by="Hue").reset_index(drop=True)
+        colors_all (:obj:`list` of :obj:`list` of DataFrame): list for each
+            cover of lists containing a DataFrame of all the pixels in RGB
+            and HSV
 
-j = 0
-k = 0
-hue = byHue.loc[0, "Hue"]
-change = False
-for i in range(1, byHue.shape[0]):
-    if hue != byHue.loc[i, "Hue"]:
-        replace = byHue.loc[j:k, :].sort_values(ascending=change, by=["Saturation"]).copy()
-        byHue.iloc[j:k + 1, :] = replace.to_numpy().tolist()
-        change = not change
-        j = i
-        k = i
-        hue = byHue.loc[j, "Hue"]
-    else:
-        k += 1
+        covers (:obj:`list` of Image): list of all the covers
+    """
+    dominant_colors_all = []
+    colors_all = []
+    covers = []
 
-orderRainbow = [None] * byHue.shape[0]
-for i in range(0, byHue.shape[0]):
-    orderRainbow[byHue.loc[i, ["ogIndex"]][0]] = i
+    for i in urls:
+        cover = get_image(i, 50)
+        # dom[0] = RGB dom
+        # colors[0] = RGB
+        dom, colors = dominant_colors(cover, 4, "both")
+        dominant_colors_all.append(dom)
+        colors_all.append(colors)
+        covers.append(cover)
 
-file["Rainbow order"] = orderRainbow
+    return dominant_colors_all, colors_all, covers
 
-file.to_csv('colors.csv')
+from sklearn.metrics.pairwise import euclidean_distances
+
+def count_colors(dominants, colors, cover):
+    """
+    For each dominant color, counts how many are closest to it.
+
+    Args:
+        dominants (DataFrame): each row is a dominant color with its RGB values
+        colors (DataFrame): each row is a pixel from the cover with its RGB
+            values
+        cover (Image): image of the cover
+
+    Returns:
+        count (:obj:`list` of int): number of pixels closest to each dominant
+            color
+        dom_color (:obj:`list` of int): RGB values of the dominant color
+        replaced_cover (Image): cover replaced with the dominant colors
+
+    """
+    replaced_cover = cover.copy()
+    dist_min = np.argmin(euclidean_distances(colors, dominants), axis=1)
+    colors_replaced = [tuple(dominants.loc[i]) for i in dist_min]
+    replaced_cover.putdata(colors_replaced)
+    count = [(dist_min == i).sum() for i in range(dominants.shape[0])]
+    dom_color = dominants.iloc[np.argmax(count), :]
+    return count, dom_color, replaced_cover
+
+
+def main():
+    start_time = time.perf_counter()
+
+    urls = get_urls_from_file().tolist()[:1]
+    dominant_colors_all, colors_all, covers = analyse(urls)
+
+    # dominant_colors_all[x][0] = RGB dom of x
+    # dominant_colors_all[x][1] = HSV dom of x
+    # colors_all[x][0] = RGB of x
+    # colors_all[x][1] = HSV of x
+    results_rgb = pd.DataFrame(columns=["Result RGB", "RGB", "HSV", "Hex"])
+    results_hsv = pd.DataFrame(columns=["Result HSV", "RGB", "HSV", "Hex"])
+    n = len(urls)
+
+    for i in range(n):
+        count_rgb, dom_color_rgb, replaced_cover_rgb = \
+            count_colors(dominant_colors_all[i][0],
+                         colors_all[i][0],
+                         covers[i])
+        count_hsv, dom_color_hsv, replaced_cover_hsv = \
+            count_colors(dominant_colors_all[i][1],
+                         colors_all[i][0],
+                         covers[i])
+        results_rgb.loc[results_rgb.shape[0]] = \
+            [palette(dominant_colors_all[i][0],
+                     50,
+                     covers=[covers[i], replaced_cover_rgb],
+                     count=count_rgb),
+             dom_color_rgb.tolist(),
+             colorsys.rgb_to_hsv(dom_color_rgb[0],
+                                 dom_color_rgb[1],
+                                 dom_color_rgb[2]),
+             rgb_to_hex((dom_color_rgb[0],
+                         dom_color_rgb[1],
+                         dom_color_rgb[2]))]
+        results_hsv.loc[results_hsv.shape[0]] = \
+            [palette(dominant_colors_all[i][1],
+                     50,
+                     covers=[covers[i], replaced_cover_hsv],
+                     count=count_hsv),
+             dom_color_hsv.tolist(),
+             colorsys.rgb_to_hsv(dom_color_hsv[0],
+                                 dom_color_hsv[1],
+                                 dom_color_hsv[2]),
+             rgb_to_hex((dom_color_hsv[0],
+                         dom_color_hsv[1],
+                         dom_color_hsv[2]))]
+
+    end_time = time.perf_counter()
+    print(f"Execution Time : {end_time - start_time:0.6f}")
+    # array from 0 to len(urls)
+
+    # TODO
+
+    index = np.arange(0, len(urls), 1)
+    hue = results_rgb
+
+    for i in range(byHue.shape[0]):
+        byHue.loc[i, "Hue"] = 5 * round((byHue.loc[i, "Hue"] * 100) / 5)
+    byHue = byHue.sort_values(by="Hue").reset_index(drop=True)
+
+    j = 0
+    k = 0
+    hue = byHue.loc[0, "Hue"]
+    change = False
+    for i in range(1, byHue.shape[0]):
+        if hue != byHue.loc[i, "Hue"]:
+            replace = byHue.loc[j:k, :].sort_values(ascending=change, by=["Saturation"]).copy()
+            byHue.iloc[j:k + 1, :] = replace.to_numpy().tolist()
+            change = not change
+            j = i
+            k = i
+            hue = byHue.loc[j, "Hue"]
+        else:
+            k += 1
+
+    orderRainbow = [None] * byHue.shape[0]
+    for i in range(0, byHue.shape[0]):
+        orderRainbow[byHue.loc[i, ["ogIndex"]][0]] = i
+
+    file["Rainbow order"] = orderRainbow
+
+    file.to_csv('colors.csv')
+
+
+if __name__ == "__main__":
+    main()
