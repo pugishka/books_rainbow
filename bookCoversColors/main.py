@@ -287,8 +287,10 @@ def analyse(urls):
     dominant_colors_all = []
     colors_all = []
     covers = []
-
+    k = 0
     for i in urls:
+        print(k)
+        k += 1
         cover = get_image(i, 50)
         # dom[0] = RGB dom
         # colors[0] = RGB
@@ -327,89 +329,143 @@ def count_colors(dominants, colors, cover):
     return count, dom_color, replaced_cover
 
 
+def path_to_cover(path):
+    return '<img src="' + path + '" width="50px">'
+
+
+def path_to_palette(path):
+    return '<img src="palettes_covers/' + path + '">'
+
+
 def main():
     start_time = time.perf_counter()
 
-    urls = get_urls_from_file().tolist()[:1]
-    dominant_colors_all, colors_all, covers = analyse(urls)
+    urls = get_urls_from_file().tolist()
 
-    # dominant_colors_all[x][0] = RGB dom of x
-    # dominant_colors_all[x][1] = HSV dom of x
-    # colors_all[x][0] = RGB of x
-    # colors_all[x][1] = HSV of x
-    results_rgb = pd.DataFrame(columns=["Result RGB", "RGB", "HSV", "Hex"])
-    results_hsv = pd.DataFrame(columns=["Result HSV", "RGB", "HSV", "Hex"])
-    n = len(urls)
+    s = True
+    if s:
+        dominant_colors_all, colors_all, covers = analyse(urls)
 
-    for i in range(n):
-        count_rgb, dom_color_rgb, replaced_cover_rgb = \
-            count_colors(dominant_colors_all[i][0],
-                         colors_all[i][0],
-                         covers[i])
-        count_hsv, dom_color_hsv, replaced_cover_hsv = \
-            count_colors(dominant_colors_all[i][1],
-                         colors_all[i][0],
-                         covers[i])
-        results_rgb.loc[results_rgb.shape[0]] = \
-            [palette(dominant_colors_all[i][0],
-                     50,
-                     covers=[covers[i], replaced_cover_rgb],
-                     count=count_rgb),
-             dom_color_rgb.tolist(),
-             colorsys.rgb_to_hsv(dom_color_rgb[0],
-                                 dom_color_rgb[1],
-                                 dom_color_rgb[2]),
-             rgb_to_hex((dom_color_rgb[0],
-                         dom_color_rgb[1],
-                         dom_color_rgb[2]))]
-        results_hsv.loc[results_hsv.shape[0]] = \
-            [palette(dominant_colors_all[i][1],
-                     50,
-                     covers=[covers[i], replaced_cover_hsv],
-                     count=count_hsv),
-             dom_color_hsv.tolist(),
-             colorsys.rgb_to_hsv(dom_color_hsv[0],
-                                 dom_color_hsv[1],
-                                 dom_color_hsv[2]),
-             rgb_to_hex((dom_color_hsv[0],
-                         dom_color_hsv[1],
-                         dom_color_hsv[2]))]
+        # dominant_colors_all[x][0] = RGB dom of x
+        # dominant_colors_all[x][1] = HSV dom of x
+        # colors_all[x][0] = RGB of x
+        # colors_all[x][1] = HSV of x
+        results_rgb = pd.DataFrame(columns=["Cover", "Result RGB", "RGB", "HSV",
+                                            "Hex"])
+        results_hsv = pd.DataFrame(columns=["Cover", "Result HSV", "RGB", "HSV",
+                                            "Hex"])
+        n = len(urls)
 
-    end_time = time.perf_counter()
-    print(f"Execution Time : {end_time - start_time:0.6f}")
-    # array from 0 to len(urls)
+        for i in range(n):
+            print(i)
+            count_rgb, dom_color_rgb, replaced_cover_rgb = \
+                count_colors(dominant_colors_all[i][0],
+                             colors_all[i][0],
+                             covers[i])
+            count_hsv, dom_color_hsv, replaced_cover_hsv = \
+                count_colors(dominant_colors_all[i][1],
+                             colors_all[i][0],
+                             covers[i])
+
+            p_rgb = palette(dominant_colors_all[i][0],
+                            50,
+                            covers=[covers[i], replaced_cover_rgb],
+                            count=count_rgb)
+
+            p_rgb.save("palettes_covers/" + str(i) + "_rgb.jpg")
+            html_rgb = "<img src='palettes_covers/" + str(i) + "_rgb.jpg'>"
+
+            results_rgb.loc[results_rgb.shape[0]] = \
+                [urls[i],
+                 str(i) + "_rgb.jpg",
+                 dom_color_rgb.tolist(),
+                 list(colorsys.rgb_to_hsv(dom_color_rgb[0],
+                                          dom_color_rgb[1],
+                                          dom_color_rgb[2])),
+                 "#" + rgb_to_hex((dom_color_rgb[0],
+                                   dom_color_rgb[1],
+                                   dom_color_rgb[2]))]
+
+            p_hsv = palette(dominant_colors_all[i][1],
+                            50,
+                            covers=[covers[i], replaced_cover_hsv],
+                            count=count_hsv)
+            p_hsv.save("palettes_covers/" + str(i) + "_hsv.jpg")
+
+            results_hsv.loc[results_hsv.shape[0]] = \
+                [urls[i],
+                 str(i) + "_hsv.jpg",
+                 dom_color_hsv.tolist(),
+                 list(colorsys.rgb_to_hsv(dom_color_hsv[0],
+                                          dom_color_hsv[1],
+                                          dom_color_hsv[2])),
+                 "#" + rgb_to_hex((dom_color_hsv[0],
+                                   dom_color_hsv[1],
+                                   dom_color_hsv[2]))]
+
+        end_time = time.perf_counter()
+        print(f"Execution Time : {end_time - start_time:0.6f}")
+        # array from 0 to len(urls)
+
+        hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
+    else:
+        df = pd.read_csv('results_hsv.csv')
+        hsv = pd.DataFrame(df.loc[:, "HSV"].copy())
+        for i, s in hsv.itertuples():
+            hsv.iloc[i, 0] = list(map(float, s[1:len(s)-1].split(', ')))
 
     # TODO
 
-    index = np.arange(0, len(urls), 1)
-    hue = results_rgb
-
-    for i in range(byHue.shape[0]):
-        byHue.loc[i, "Hue"] = 5 * round((byHue.loc[i, "Hue"] * 100) / 5)
-    byHue = byHue.sort_values(by="Hue").reset_index(drop=True)
-
-    j = 0
-    k = 0
-    hue = byHue.loc[0, "Hue"]
-    change = False
-    for i in range(1, byHue.shape[0]):
-        if hue != byHue.loc[i, "Hue"]:
-            replace = byHue.loc[j:k, :].sort_values(ascending=change, by=["Saturation"]).copy()
-            byHue.iloc[j:k + 1, :] = replace.to_numpy().tolist()
+    hue = pd.DataFrame([v for i, v in hsv.itertuples()],
+                       columns=["h", "s", "v"])
+    hue.reset_index(inplace=True)
+    hue.loc[:, "h"] = 5 * round((hue.loc[:, "h"] * 100) / 5)
+    hue = hue.sort_values(by="h").reset_index(drop=True)
+    hue_value = hue.loc[0, "h"]
+    start = 0
+    change = True
+    for i in range(1, hue.shape[0]):
+        if hue.loc[i, "h"] != hue_value:
+            replace = hue.loc[start:i-1, :].sort_values(ascending=change,
+                                                        by=["s"]).copy()
+            hue.loc[start:i-1, :] = np.array(replace)
+            hue.reset_index(drop=True, inplace=True)
             change = not change
-            j = i
-            k = i
-            hue = byHue.loc[j, "Hue"]
-        else:
-            k += 1
+            start = i
+            hue_value = hue.loc[i, "h"]
 
-    orderRainbow = [None] * byHue.shape[0]
-    for i in range(0, byHue.shape[0]):
-        orderRainbow[byHue.loc[i, ["ogIndex"]][0]] = i
+    hue.loc[:, "s"] = 5 * round((hue.loc[:, "s"] * 100) / 5)
+    s_value = hue.loc[0, "s"]
+    start = 0
+    change = True
+    for i in range(1, hue.shape[0]):
+        if hue.loc[i, "s"] != s_value:
+            replace = hue.loc[start:i-1, :].sort_values(ascending=change,
+                                                        by=["v"]).copy()
+            hue.loc[start:i-1, :] = np.array(replace)
+            hue.reset_index(drop=True, inplace=True)
+            change = not change
+            start = i
+            s_value = hue.loc[i, "s"]
+    hue.reset_index(inplace=True)
+    hue = hue.sort_values(by=["index"])
 
-    file["Rainbow order"] = orderRainbow
+    results_hsv["orderRainbow"] = np.array(hue.iloc[:, 0]).astype(int)
+    results_hsv = results_hsv.sort_values(by=["orderRainbow"])
 
-    file.to_csv('colors.csv')
+    results_rgb.to_csv('results_rgb.csv')
+    results_hsv.to_csv('results_hsv.csv')
+
+    format_rgb = {"Cover": path_to_cover,
+                  "Result RGB": path_to_palette}
+
+    format_hsv = {"Cover": path_to_cover,
+                  "Result HSV": path_to_palette}
+
+    results_rgb.to_html('results_rgb.html', escape=False,
+                        formatters=format_rgb)
+    results_hsv.to_html('results_hsv.html', escape=False,
+                        formatters=format_hsv)
 
 
 if __name__ == "__main__":
