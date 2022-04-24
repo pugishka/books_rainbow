@@ -1,15 +1,21 @@
-from PIL import ImageColor
-import requests
+import traceback
+
 import pandas as pd
+from requests.exceptions import MissingSchema
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
-from PIL import Image, ImageDraw
+from PIL import Image as PilImage
+from PIL import ImageDraw as PilImageDraw
 import numpy as np
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import *
+from tkinter import filedialog, scrolledtext
 import colorsys
 import time
-
+from concurrent.futures import as_completed
+from requests_futures.sessions import FuturesSession
+from sklearn.metrics.pairwise import euclidean_distances
+import requests
 
 def rgb_to_hex(rgb):
     """
@@ -44,25 +50,23 @@ def palette(data_colors, square_size, **kwargs):
 
     """
 
-    palette = Image.new("RGB", (data_colors.shape[0] * square_size,
+    palette = PilImage.new("RGB", (data_colors.shape[0] * square_size,
                                 square_size), "#ffffff")
     offset_x = 0
     for color in data_colors.itertuples():
-        square = ImageDraw.Draw(palette)
+        square = PilImageDraw.Draw(palette)
         # hex colors
         if len(color) == 2:
-            square.rectangle([(offset_x, 0),
-                              (offset_x + square_size, square_size)],
+            square.rectangle((offset_x, 0, offset_x + square_size, square_size),
                              fill="#" + str(color[1:]))
         else:
-            square.rectangle([(offset_x, 0),
-                              (offset_x + square_size, square_size)],
+            square.rectangle((offset_x, 0, offset_x + square_size, square_size),
                              fill="#" + rgb_to_hex(tuple(color[1:])))
         offset_x += square_size
 
     if kwargs.get("covers") is not None:
         for cover in kwargs.get("covers"):
-            palette2 = Image.new("RGB",
+            palette2 = PilImage.new("RGB",
                                  (palette.width+20+cover.width,
                                   max(palette.height, cover.height)),
                                  "#ffffff")
@@ -72,13 +76,13 @@ def palette(data_colors, square_size, **kwargs):
 
     if kwargs.get("count") is not None:
         if palette.height == square_size:
-            palette2 = Image.new("RGB",
+            palette2 = PilImage.new("RGB",
                                  (palette.width,
                                   palette.height+20),
                                  "#ffffff")
             palette2.paste(palette, (0, 0))
             palette = palette2.copy()
-        t = ImageDraw.Draw(palette)
+        t = PilImageDraw.Draw(palette)
         total = sum(kwargs.get("count"))
         for i in range(len(kwargs.get("count"))):
             fill = "#000"
@@ -127,11 +131,6 @@ def dominant_colors_clean(colors, round_to_multiple):
     return pd.DataFrame(colors)
 
 
-from concurrent.futures import as_completed
-
-from requests_futures.sessions import FuturesSession
-
-
 def get_images(urls, max_width):
     """
     Gets images from URLs.
@@ -144,12 +143,12 @@ def get_images(urls, max_width):
         (:obj:`list` of Image): images from the URLs
     """
     urls = np.array(urls)
-    images = [None]*len(urls)
+    images = np.array([None]*len(urls))
     with FuturesSession() as session:
         futures = [session.get(urls[i], stream=True) for i in range(len(urls))]
         for future in as_completed(futures):
             ind = np.where(urls == future.result().url)[0][0]
-            im = Image.open(future.result().raw).convert("RGB")
+            im = PilImage.open(future.result().raw).convert("RGB")
             factor = max_width / im.size[0]
             images[ind] = im.resize((int(im.size[0]*factor),
                                      int(im.size[1]*factor)))
@@ -184,15 +183,14 @@ def dominant_colors(im, max_num_colors, mode):
             is a pixel of the image with its RGB or HSV values
     """
     colors = []
+    r = np.array(im.getdata())
     if mode == "RGB":
-        r = np.array(im.getdata())
         colors.append(pd.DataFrame(r, columns=["red", "green", "blue"]))
     elif mode == "HSV":
         r = [colorsys.rgb_to_hsv(r[i][0], r[i][1], r[i][2])
              for i in range(r.shape[0])]
         colors.append(pd.DataFrame(r, columns=["hue", "saturation", "value"]))
     else:
-        r = np.array(im.getdata())
         colors.append(pd.DataFrame(r, columns=["red", "green", "blue"]))
         r = [colorsys.rgb_to_hsv(r[i][0], r[i][1], r[i][2])
              for i in range(r.shape[0])]
@@ -233,7 +231,7 @@ def get_file():
     Returns:
         file (str): directory of the file
     """
-    root = tk.Tk()
+    root = Tk()
     root.withdraw()
     file = filedialog.askopenfilename(
         initialdir="C:/Users/MainFrame/Desktop/",
@@ -250,40 +248,14 @@ def get_urls_from_file():
     Returns:
         urls (DataFrame): column of URLs from the CSV file
     """
-    url = "C:/Users/charo/Downloads/Export-e8d05104-a27b-4b14-ace2" \
-          "-f7ddae1ea7c7/Bookshelf cafd6.csv"
+    # url = "C:/Users/charo/Downloads/Export-e8d05104-a27b-4b14-ace2" \
+    #       "-f7ddae1ea7c7/Bookshelf cafd6.csv"
+    url = get_file()
     file = pd.read_csv(url)
-    #column = input("Number of the column containing the covers :\n")
-    column = 4
+    column = input("Number of the column containing the covers :\n")
+    # column = 4
     urls = file.iloc[:, int(column) - 1]
     return urls
-
-
-def add_color_columns(file, max_num_colors, mode):
-    """
-    Add new columns to the copy of the original file.
-
-    Args:
-        file (DataFrame): opened file
-        max_num_colors (int): maximum number of colors to find in the pictures
-        mode (str):  use "RGB" or "HSV" colors
-
-    Returns:
-
-    """
-    last_column = file.shape[1]
-    empty_column = [None] * file.shape[0]
-    # if mode == "RGB":
-    #     mode = ["RGB", "red", "green", "blue"]
-    # else:
-    #     mode = ["HSV", "hue", "value", "saturation"]
-
-    # for i in range(max_num_colors):
-    #     file["Color " + str(i) + " : RGB"] = empty_column
-    #     file["Color " + str(i) + " : red"] = empty_column
-    #     file["Color " + str(i) + " : green"] = empty_column
-    #     file["Color " + str(i) + " : blue"] = empty_column
-    #     file["Color " + str(i) + " : Hex code"] = empty_column
 
 
 def analyse(urls):
@@ -327,7 +299,6 @@ def analyse(urls):
 
     return dominant_colors_all, colors_all, covers
 
-from sklearn.metrics.pairwise import euclidean_distances
 
 def count_colors(dominants, colors, cover):
     """
@@ -368,7 +339,6 @@ def get_order_rainbow(hsv):
 
     # for each hue, sort saturation alternatively
     hue_value = hue.loc[0, "h"]
-    i = 0
     start = 0
     next_hue = np.where(np.array(hue.loc[:, "h"]) > hue_value)[0]
     change = True
@@ -387,7 +357,6 @@ def get_order_rainbow(hsv):
     # for each saturation, sort value alternatively
     hue.loc[:, "s"] = 5 * round((hue.loc[:, "s"] * 100) / 5)
     s_value = hue.loc[0, "s"]
-    i = 0
     start = 0
     next_s = np.where(np.array(hue.loc[:, "s"]) > s_value)[0]
     change = True
@@ -420,7 +389,7 @@ def main():
     start_time = time.perf_counter()
 
     # get list of URLs to the covers
-    urls = get_urls_from_file().tolist()
+    urls = get_urls_from_file().tolist()[:1]
     n = len(urls)
 
     palette_square_size = 50
@@ -526,25 +495,112 @@ def main():
 
     end_time = time.perf_counter()
     print(f"end : {end_time - start_time:0.6f}")
+    print("palette")
 
-    palette_all = Image.new("RGB", (100 * 20, (int(n/100)+1) * 30), "#ffffff")
+    palette_all = PilImage.new("RGB", (n * 3, 100), "#ffffff")
     offset_x = 0
-    offset_y = 0
-    i = 0
-    for url in results_hsv.loc[:, "Cover"]:
-        print(i)
-        i += 1
-        image = Image.open(requests.get(url, stream=True).raw)
-        image = image.convert("RGB")
-        palette_all.paste(image.resize((20, 30)), (offset_x, offset_y))
-        offset_x += 20
-        if offset_x == 2000:
-            offset_x = 0
-            offset_y += 30
+    images = get_images(results_hsv.loc[:, "Cover"], 50)
+    for im in images:
+        palette_all.paste(im.resize((3, 100)), (offset_x, 0))
+        offset_x += 3
 
     palette_all.save(path_palette_hsv + "/all_covers_hsv.jpg")
 
 
+def donothing():
+    return
+
+
+from pandastable import Table, TableModel
+
+
+def open_csv(frame):
+    # name = get_file()
+    name = "C:/Users/charo/Downloads/Export-e8d05104-a27b-4b14-ace2" \
+           "-f7ddae1ea7c7/Bookshelf cafd6.csv"
+    file = pd.read_csv(name)
+    pt = Table(frame)
+
+
+def main_window():
+    root = Tk()
+    menubar = Menu(root)
+    file_menu = Menu(menubar, tearoff=0)
+    file_menu.add_command(label="Open", command=donothing)
+    file_menu.add_command(label="Save", command=donothing)
+    file_menu.add_command(label="Save as...", command=donothing)
+    file_menu.add_separator()
+    file_menu.add_command(label="Close", command=donothing)
+    menubar.add_cascade(label="File", menu=file_menu)
+    root.config(menu=menubar)
+
+    frame = Frame(root)
+    frame.grid(row=0, column=0)
+    name = "C:/Users/charo/Downloads/Export-e8d05104-a27b-4b14-ace2" \
+           "-f7ddae1ea7c7/Bookshelf cafd6.csv"
+    pt = Table(frame, dataframe=pd.read_csv(name))
+    pt.show()
+
+    frame2 = Frame(root)
+    frame2.grid(row=0, column=1)
+
+    Label(frame2, text='Column').grid(row=0, column=0)
+
+    values = list(pt.model.df.columns)
+    variable = StringVar()
+    option_menu = OptionMenu(
+        frame2,
+        variable,
+        *values,
+    )
+    option_menu.grid(row=0, column=1)
+
+    progress = scrolledtext.ScrolledText(
+        frame2,
+        wrap=tk.WORD,
+        width=30,
+        height=10)
+
+    progress.grid(row=1, columnspan=3)
+    #progress.configure(state="disabled")
+
+    Button(frame2, text="OK",
+           command=lambda: check_column(
+               variable.get(),
+               pt.model.df,
+               progress
+           )).grid(row=0, column=2)
+
+    root.mainloop()
+
+
+import requests
+from io import BytesIO
+
+
+def check_column(col, df, progress):
+    try:
+        url = df.loc[0, col]
+        response = requests.get(url)
+        im = PilImage.open(BytesIO(response.content))
+    except MissingSchema:
+        progress.insert(
+            tk.INSERT,
+            "The column should include links to pictures.\n")
+        return False
+    except Exception as e:
+        progress.insert(
+            tk.INSERT,
+            "An error occurred.\n")
+        progress.insert(
+            tk.INSERT,
+            "   " + type(e).__name__ + "\n")
+        return False
+    else:
+        progress.insert(tk.INSERT, "OK\n")
+        return True
+
+
 
 if __name__ == "__main__":
-    main()
+    main_window()
