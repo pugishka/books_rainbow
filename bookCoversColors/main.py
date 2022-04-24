@@ -43,6 +43,7 @@ def palette(data_colors, square_size, **kwargs):
         palette (Image): resulting image
 
     """
+
     palette = Image.new("RGB", (data_colors.shape[0] * square_size,
                                 square_size), "#ffffff")
     offset_x = 0
@@ -78,13 +79,15 @@ def palette(data_colors, square_size, **kwargs):
             palette2.paste(palette, (0, 0))
             palette = palette2.copy()
         t = ImageDraw.Draw(palette)
+        total = sum(kwargs.get("count"))
         for i in range(len(kwargs.get("count"))):
             fill = "#000"
             if np.where(np.array(kwargs.get("count")) ==
                         np.amax(np.array(kwargs.get("count"))))[0][0] == i:
                 fill = "#f00"
+            percent = (kwargs.get("count")[i]*100)/total
             t.text((i * square_size, square_size),
-                   str(kwargs.get("count")[i]),
+                   str(round(percent)) + "%",
                    fill=fill)
 
     return palette
@@ -124,24 +127,41 @@ def dominant_colors_clean(colors, round_to_multiple):
     return pd.DataFrame(colors)
 
 
-def get_image(url, max_width):
+from concurrent.futures import as_completed
+
+from requests_futures.sessions import FuturesSession
+
+
+def get_images(urls, max_width):
     """
-    Gets image from URL.
+    Gets images from URLs.
 
     Args:
-        url (str): URL to the picture
+        urls (:obj:`list` of str): URLs to the pictures
         max_width (int): resize image if above maximum width
 
     Returns:
-        (Image): image from the URL
+        (:obj:`list` of Image): images from the URLs
     """
-    image = Image.open(requests.get(url, stream=True).raw)
-    image = image.convert("RGB")
-    if image.size[0] > max_width:
-        factor = max_width / image.size[0]
-        image = image.resize((int(image.size[0]*factor),
-                              int(image.size[1]*factor)))
-    return image
+    urls = np.array(urls)
+    images = [None]*len(urls)
+    with FuturesSession() as session:
+        futures = [session.get(urls[i], stream=True) for i in range(len(urls))]
+        for future in as_completed(futures):
+            ind = np.where(urls == future.result().url)[0][0]
+            im = Image.open(future.result().raw).convert("RGB")
+            factor = max_width / im.size[0]
+            images[ind] = im.resize((int(im.size[0]*factor),
+                                     int(im.size[1]*factor)))
+
+    return images
+    # image = Image.open(session.get(url, stream=True).raw)
+    # image = image.convert("RGB")
+    # if image.size[0] > max_width:
+    #
+    #     image = image.resize((int(image.size[0]*factor),
+    #                           int(image.size[1]*factor)))
+    # return image
 
 
 def dominant_colors(im, max_num_colors, mode):
@@ -284,20 +304,26 @@ def analyse(urls):
 
         covers (:obj:`list` of Image): list of all the covers
     """
-    dominant_colors_all = []
-    colors_all = []
-    covers = []
-    k = 0
-    for i in urls:
-        print(k)
-        k += 1
-        cover = get_image(i, 50)
-        # dom[0] = RGB dom
-        # colors[0] = RGB
-        dom, colors = dominant_colors(cover, 4, "both")
-        dominant_colors_all.append(dom)
-        colors_all.append(colors)
-        covers.append(cover)
+
+    covers = get_images(urls, 50)
+    result = np.array(list(map(dominant_colors,
+                               covers,
+                               [4]*len(urls),
+                               ["both"]*len(urls)
+                               )
+                           )
+                      )
+    print("done")
+    dominant_colors_all = result[:, 0]
+    colors_all = result[:, 1]
+
+    # for i in range(len(urls)):
+    #     # print("analyse #" + str(i))
+    #     # dom[0] = RGB dom
+    #     # colors[0] = RGB
+    #     dom, colors = dominant_colors(covers[i], 4, "both")
+    #     dominant_colors_all.append(dom)
+    #     .append(colors)
 
     return dominant_colors_all, colors_all, covers
 
@@ -322,11 +348,63 @@ def count_colors(dominants, colors, cover):
     """
     replaced_cover = cover.copy()
     dist_min = np.argmin(euclidean_distances(colors, dominants), axis=1)
-    colors_replaced = [tuple(dominants.loc[i]) for i in dist_min]
-    replaced_cover.putdata(colors_replaced)
+    colors_replaced = map(list(map(tuple, np.array(dominants))).__getitem__,
+                          dist_min)
+    replaced_cover.putdata(list(colors_replaced))
     count = [(dist_min == i).sum() for i in range(dominants.shape[0])]
     dom_color = dominants.iloc[np.argmax(count), :]
+
     return count, dom_color, replaced_cover
+
+
+def get_order_rainbow(hsv):
+    hue = pd.DataFrame([v for i, v in hsv.itertuples()],
+                       columns=["h", "s", "v"])
+    hue.reset_index(inplace=True)
+    hue.loc[:, "h"] = 5 * round((hue.loc[:, "h"] * 100) / 5)
+
+    # sort by hue
+    hue = hue.sort_values(by="h").reset_index(drop=True)
+
+    # for each hue, sort saturation alternatively
+    hue_value = hue.loc[0, "h"]
+    i = 0
+    start = 0
+    next_hue = np.where(np.array(hue.loc[:, "h"]) > hue_value)[0]
+    change = True
+
+    while next_hue.size != 0:
+        i = next_hue[0]
+        replace = hue.loc[start:i - 1, :].sort_values(ascending=change,
+                                                      by=["s"]).copy()
+        hue.loc[start:i - 1, :] = np.array(replace)
+        hue.reset_index(drop=True, inplace=True)
+        change = not change
+        start = i
+        hue_value = hue.loc[i, "h"]
+        next_hue = np.where(np.array(hue.loc[:, "h"]) > hue_value)[0]
+
+    # for each saturation, sort value alternatively
+    hue.loc[:, "s"] = 5 * round((hue.loc[:, "s"] * 100) / 5)
+    s_value = hue.loc[0, "s"]
+    i = 0
+    start = 0
+    next_s = np.where(np.array(hue.loc[:, "s"]) > s_value)[0]
+    change = True
+    while next_s.size != 0:
+        i = next_s[0]
+        replace = hue.loc[start:i - 1, :].sort_values(ascending=change,
+                                                      by=["v"]).copy()
+        hue.loc[start:i - 1, :] = np.array(replace)
+        hue.reset_index(drop=True, inplace=True)
+        change = not change
+        start = i
+        s_value = hue.loc[i, "s"]
+        next_s = np.where(np.array(hue.loc[:, "s"]) > s_value)[0]
+    hue.reset_index(inplace=True)
+    hue = hue.sort_values(by=["index"])
+
+    return np.array(hue.iloc[:, 0]).astype(int)
 
 
 def path_to_cover(path):
@@ -334,16 +412,28 @@ def path_to_cover(path):
 
 
 def path_to_palette(path):
-    return '<img src="palettes_covers/' + path + '">'
+    return '<img src="' + path + '">'
 
 
 def main():
+
     start_time = time.perf_counter()
 
+    # get list of URLs to the covers
     urls = get_urls_from_file().tolist()
+    n = len(urls)
 
+    palette_square_size = 50
+    palette_with_cover = True
+    palette_with_replaced_cover = True
+    palette_with_count = True
+    path_palette_rgb = "palettes_covers"
+    path_palette_hsv = "palettes_covers"
+
+    # s False if we already have a file of results
     s = True
     if s:
+
         dominant_colors_all, colors_all, covers = analyse(urls)
 
         # dominant_colors_all[x][0] = RGB dom of x
@@ -354,30 +444,35 @@ def main():
                                             "Hex"])
         results_hsv = pd.DataFrame(columns=["Cover", "Result HSV", "RGB", "HSV",
                                             "Hex"])
-        n = len(urls)
 
+        # for each url
         for i in range(n):
-            print(i)
             count_rgb, dom_color_rgb, replaced_cover_rgb = \
                 count_colors(dominant_colors_all[i][0],
                              colors_all[i][0],
                              covers[i])
+
             count_hsv, dom_color_hsv, replaced_cover_hsv = \
                 count_colors(dominant_colors_all[i][1],
                              colors_all[i][0],
                              covers[i])
 
             p_rgb = palette(dominant_colors_all[i][0],
-                            50,
+                            palette_square_size,
                             covers=[covers[i], replaced_cover_rgb],
                             count=count_rgb)
 
-            p_rgb.save("palettes_covers/" + str(i) + "_rgb.jpg")
-            html_rgb = "<img src='palettes_covers/" + str(i) + "_rgb.jpg'>"
+            p_hsv = palette(dominant_colors_all[i][1],
+                            palette_square_size,
+                            covers=[covers[i], replaced_cover_hsv],
+                            count=count_hsv)
+
+            p_rgb.save(path_palette_rgb + "/" + str(i) + "_rgb.jpg")
+            p_hsv.save(path_palette_hsv + "/" + str(i) + "_hsv.jpg")
 
             results_rgb.loc[results_rgb.shape[0]] = \
                 [urls[i],
-                 str(i) + "_rgb.jpg",
+                 path_palette_rgb + "/" + str(i) + "_rgb.jpg",
                  dom_color_rgb.tolist(),
                  list(colorsys.rgb_to_hsv(dom_color_rgb[0],
                                           dom_color_rgb[1],
@@ -386,15 +481,9 @@ def main():
                                    dom_color_rgb[1],
                                    dom_color_rgb[2]))]
 
-            p_hsv = palette(dominant_colors_all[i][1],
-                            50,
-                            covers=[covers[i], replaced_cover_hsv],
-                            count=count_hsv)
-            p_hsv.save("palettes_covers/" + str(i) + "_hsv.jpg")
-
             results_hsv.loc[results_hsv.shape[0]] = \
                 [urls[i],
-                 str(i) + "_hsv.jpg",
+                 path_palette_rgb + "/" + str(i) + "_hsv.jpg",
                  dom_color_hsv.tolist(),
                  list(colorsys.rgb_to_hsv(dom_color_hsv[0],
                                           dom_color_hsv[1],
@@ -403,54 +492,22 @@ def main():
                                    dom_color_hsv[1],
                                    dom_color_hsv[2]))]
 
-        end_time = time.perf_counter()
-        print(f"Execution Time : {end_time - start_time:0.6f}")
-        # array from 0 to len(urls)
+        rgb_hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
+        hsv_hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
 
-        hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
     else:
-        df = pd.read_csv('results_hsv.csv')
-        hsv = pd.DataFrame(df.loc[:, "HSV"].copy())
-        for i, s in hsv.itertuples():
-            hsv.iloc[i, 0] = list(map(float, s[1:len(s)-1].split(', ')))
+        results_rgb = pd.read_csv('results_rgb.csv')
+        rgb_hsv = pd.DataFrame(results_rgb.loc[:, "HSV"].copy())
+        results_hsv = pd.read_csv('results_hsv.csv')
+        hsv_hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
+        for i, s in rgb_hsv.itertuples():
+            rgb_hsv.iloc[i, 0] = list(map(float, s[1:len(s)-1].split(', ')))
+        for i, s in hsv_hsv.itertuples():
+            hsv_hsv.iloc[i, 0] = list(map(float, s[1:len(s)-1].split(', ')))
 
-    # TODO
-
-    hue = pd.DataFrame([v for i, v in hsv.itertuples()],
-                       columns=["h", "s", "v"])
-    hue.reset_index(inplace=True)
-    hue.loc[:, "h"] = 5 * round((hue.loc[:, "h"] * 100) / 5)
-    hue = hue.sort_values(by="h").reset_index(drop=True)
-    hue_value = hue.loc[0, "h"]
-    start = 0
-    change = True
-    for i in range(1, hue.shape[0]):
-        if hue.loc[i, "h"] != hue_value:
-            replace = hue.loc[start:i-1, :].sort_values(ascending=change,
-                                                        by=["s"]).copy()
-            hue.loc[start:i-1, :] = np.array(replace)
-            hue.reset_index(drop=True, inplace=True)
-            change = not change
-            start = i
-            hue_value = hue.loc[i, "h"]
-
-    hue.loc[:, "s"] = 5 * round((hue.loc[:, "s"] * 100) / 5)
-    s_value = hue.loc[0, "s"]
-    start = 0
-    change = True
-    for i in range(1, hue.shape[0]):
-        if hue.loc[i, "s"] != s_value:
-            replace = hue.loc[start:i-1, :].sort_values(ascending=change,
-                                                        by=["v"]).copy()
-            hue.loc[start:i-1, :] = np.array(replace)
-            hue.reset_index(drop=True, inplace=True)
-            change = not change
-            start = i
-            s_value = hue.loc[i, "s"]
-    hue.reset_index(inplace=True)
-    hue = hue.sort_values(by=["index"])
-
-    results_hsv["orderRainbow"] = np.array(hue.iloc[:, 0]).astype(int)
+    results_rgb["orderRainbow"] = get_order_rainbow(rgb_hsv)
+    results_hsv["orderRainbow"] = get_order_rainbow(hsv_hsv)
+    results_rgb = results_rgb.sort_values(by=["orderRainbow"])
     results_hsv = results_hsv.sort_values(by=["orderRainbow"])
 
     results_rgb.to_csv('results_rgb.csv')
@@ -466,6 +523,27 @@ def main():
                         formatters=format_rgb)
     results_hsv.to_html('results_hsv.html', escape=False,
                         formatters=format_hsv)
+
+    end_time = time.perf_counter()
+    print(f"end : {end_time - start_time:0.6f}")
+
+    palette_all = Image.new("RGB", (100 * 20, (int(n/100)+1) * 30), "#ffffff")
+    offset_x = 0
+    offset_y = 0
+    i = 0
+    for url in results_hsv.loc[:, "Cover"]:
+        print(i)
+        i += 1
+        image = Image.open(requests.get(url, stream=True).raw)
+        image = image.convert("RGB")
+        palette_all.paste(image.resize((20, 30)), (offset_x, offset_y))
+        offset_x += 20
+        if offset_x == 2000:
+            offset_x = 0
+            offset_y += 30
+
+    palette_all.save(path_palette_hsv + "/all_covers_hsv.jpg")
+
 
 
 if __name__ == "__main__":
