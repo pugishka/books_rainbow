@@ -1,5 +1,3 @@
-import traceback
-
 import pandas as pd
 from requests.exceptions import MissingSchema
 from sklearn.preprocessing import MinMaxScaler
@@ -16,6 +14,8 @@ from concurrent.futures import as_completed
 from requests_futures.sessions import FuturesSession
 from sklearn.metrics.pairwise import euclidean_distances
 import requests
+from io import BytesIO
+
 
 def rgb_to_hex(rgb):
     """
@@ -574,10 +574,6 @@ def main_window():
     root.mainloop()
 
 
-import requests
-from io import BytesIO
-
-
 def check_column(col, df, progress):
     try:
         url = df.loc[0, col]
@@ -599,7 +595,6 @@ def check_column(col, df, progress):
     else:
         progress.insert(tk.INSERT, "OK\n")
         return True
-
 
 
 if __name__ == "__main__":
