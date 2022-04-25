@@ -7,8 +7,9 @@ from requests.exceptions import MissingSchema
 import tkinter as tk
 
 
-def check_column(col, df, progress):
+def check_column(col, df, progress, start):
     try:
+        progress.delete(1.0, tk.END)
         url = df.loc[0, col]
         response = requests.get(url)
         im = PilImage.open(BytesIO(response.content))
@@ -16,7 +17,7 @@ def check_column(col, df, progress):
         progress.insert(
             tk.INSERT,
             "The column should include links to pictures.\n")
-        return False
+        start.set(False)
     except Exception as e:
         progress.insert(
             tk.INSERT,
@@ -24,10 +25,10 @@ def check_column(col, df, progress):
         progress.insert(
             tk.INSERT,
             "   " + type(e).__name__ + "\n")
-        return False
+        start.set(False)
     else:
-        progress.insert(tk.INSERT, "OK\n")
-        return True
+        progress.insert(tk.INSERT, "Starting\n")
+        start.set(True)
 
 
 def get_file(url):
@@ -45,4 +46,3 @@ def get_file(url):
         filetypes=(("CSV Files", "*.csv"),)
     )
     url.set(file)
-

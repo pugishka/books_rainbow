@@ -15,6 +15,8 @@ from requests_futures.sessions import FuturesSession
 from sklearn.metrics.pairwise import euclidean_distances
 import requests
 from io import BytesIO
+from pandastable import Table, TableModel
+import pdfkit
 
 
 def rgb_to_hex(rgb):
@@ -172,7 +174,7 @@ def dominant_colors(im, max_num_colors, mode):
 
         max_num_colors (int): maximum number of colors to find
 
-        mode (str):  use "RGB" or "HSV" colors
+        mode (:obj:`list` of str):  use "RGB" or "HSV" colors
 
     Returns:
         dominant_colors (:obj:`list` of DataFrame): list of DataFrame where
@@ -184,17 +186,15 @@ def dominant_colors(im, max_num_colors, mode):
     """
     colors = []
     r = np.array(im.getdata())
-    if mode == "RGB":
-        colors.append(pd.DataFrame(r, columns=["red", "green", "blue"]))
-    elif mode == "HSV":
-        r = [colorsys.rgb_to_hsv(r[i][0], r[i][1], r[i][2])
-             for i in range(r.shape[0])]
-        colors.append(pd.DataFrame(r, columns=["hue", "saturation", "value"]))
-    else:
-        colors.append(pd.DataFrame(r, columns=["red", "green", "blue"]))
-        r = [colorsys.rgb_to_hsv(r[i][0], r[i][1], r[i][2])
-             for i in range(r.shape[0])]
-        colors.append(pd.DataFrame(r, columns=["hue", "saturation", "value"]))
+    for m in mode:
+        if m == "RGB":
+            colors.append(pd.DataFrame(r, columns=["red", "green", "blue"]))
+        elif m == "HSV":
+            r = [colorsys.rgb_to_hsv(r[i][0], r[i][1], r[i][2])
+                 for i in range(r.shape[0])]
+            colors.append(pd.DataFrame(r, columns=["hue",
+                                                   "saturation",
+                                                   "value"]))
 
     scaler = MinMaxScaler()
     dominant_colors = []
@@ -241,6 +241,15 @@ def get_file():
     return file
 
 
+def save_results_to():
+    root = Tk()
+    root.withdraw()
+    folder = filedialog.askdirectory(
+        title="Save resulting files",
+    )
+    return folder
+
+
 def get_urls_from_file():
     """
     Get the URLs from a file.
@@ -258,7 +267,7 @@ def get_urls_from_file():
     return urls
 
 
-def analyse(urls):
+def analyse(urls, mode, max_n_palette):
     """
     Analyses each cover at the URL and finds their RGB, HSV and dominant colors.
 
@@ -280,8 +289,8 @@ def analyse(urls):
     covers = get_images(urls, 50)
     result = np.array(list(map(dominant_colors,
                                covers,
-                               [4]*len(urls),
-                               ["both"]*len(urls)
+                               [max_n_palette]*len(urls),
+                               [mode]*len(urls)
                                )
                            )
                       )
@@ -384,134 +393,10 @@ def path_to_palette(path):
     return '<img src="' + path + '">'
 
 
-def main():
-
-    start_time = time.perf_counter()
-
-    # get list of URLs to the covers
-    urls = get_urls_from_file().tolist()[:1]
-    n = len(urls)
-
-    palette_square_size = 50
-    palette_with_cover = True
-    palette_with_replaced_cover = True
-    palette_with_count = True
-    path_palette_rgb = "palettes_covers"
-    path_palette_hsv = "palettes_covers"
-
-    # s False if we already have a file of results
-    s = True
-    if s:
-
-        dominant_colors_all, colors_all, covers = analyse(urls)
-
-        # dominant_colors_all[x][0] = RGB dom of x
-        # dominant_colors_all[x][1] = HSV dom of x
-        # colors_all[x][0] = RGB of x
-        # colors_all[x][1] = HSV of x
-        results_rgb = pd.DataFrame(columns=["Cover", "Result RGB", "RGB", "HSV",
-                                            "Hex"])
-        results_hsv = pd.DataFrame(columns=["Cover", "Result HSV", "RGB", "HSV",
-                                            "Hex"])
-
-        # for each url
-        for i in range(n):
-            count_rgb, dom_color_rgb, replaced_cover_rgb = \
-                count_colors(dominant_colors_all[i][0],
-                             colors_all[i][0],
-                             covers[i])
-
-            count_hsv, dom_color_hsv, replaced_cover_hsv = \
-                count_colors(dominant_colors_all[i][1],
-                             colors_all[i][0],
-                             covers[i])
-
-            p_rgb = palette(dominant_colors_all[i][0],
-                            palette_square_size,
-                            covers=[covers[i], replaced_cover_rgb],
-                            count=count_rgb)
-
-            p_hsv = palette(dominant_colors_all[i][1],
-                            palette_square_size,
-                            covers=[covers[i], replaced_cover_hsv],
-                            count=count_hsv)
-
-            p_rgb.save(path_palette_rgb + "/" + str(i) + "_rgb.jpg")
-            p_hsv.save(path_palette_hsv + "/" + str(i) + "_hsv.jpg")
-
-            results_rgb.loc[results_rgb.shape[0]] = \
-                [urls[i],
-                 path_palette_rgb + "/" + str(i) + "_rgb.jpg",
-                 dom_color_rgb.tolist(),
-                 list(colorsys.rgb_to_hsv(dom_color_rgb[0],
-                                          dom_color_rgb[1],
-                                          dom_color_rgb[2])),
-                 "#" + rgb_to_hex((dom_color_rgb[0],
-                                   dom_color_rgb[1],
-                                   dom_color_rgb[2]))]
-
-            results_hsv.loc[results_hsv.shape[0]] = \
-                [urls[i],
-                 path_palette_rgb + "/" + str(i) + "_hsv.jpg",
-                 dom_color_hsv.tolist(),
-                 list(colorsys.rgb_to_hsv(dom_color_hsv[0],
-                                          dom_color_hsv[1],
-                                          dom_color_hsv[2])),
-                 "#" + rgb_to_hex((dom_color_hsv[0],
-                                   dom_color_hsv[1],
-                                   dom_color_hsv[2]))]
-
-        rgb_hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
-        hsv_hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
-
-    else:
-        results_rgb = pd.read_csv('results_rgb.csv')
-        rgb_hsv = pd.DataFrame(results_rgb.loc[:, "HSV"].copy())
-        results_hsv = pd.read_csv('results_hsv.csv')
-        hsv_hsv = pd.DataFrame(results_hsv.loc[:, "HSV"].copy())
-        for i, s in rgb_hsv.itertuples():
-            rgb_hsv.iloc[i, 0] = list(map(float, s[1:len(s)-1].split(', ')))
-        for i, s in hsv_hsv.itertuples():
-            hsv_hsv.iloc[i, 0] = list(map(float, s[1:len(s)-1].split(', ')))
-
-    results_rgb["orderRainbow"] = get_order_rainbow(rgb_hsv)
-    results_hsv["orderRainbow"] = get_order_rainbow(hsv_hsv)
-    results_rgb = results_rgb.sort_values(by=["orderRainbow"])
-    results_hsv = results_hsv.sort_values(by=["orderRainbow"])
-
-    results_rgb.to_csv('results_rgb.csv')
-    results_hsv.to_csv('results_hsv.csv')
-
-    format_rgb = {"Cover": path_to_cover,
-                  "Result RGB": path_to_palette}
-
-    format_hsv = {"Cover": path_to_cover,
-                  "Result HSV": path_to_palette}
-
-    results_rgb.to_html('results_rgb.html', escape=False,
-                        formatters=format_rgb)
-    results_hsv.to_html('results_hsv.html', escape=False,
-                        formatters=format_hsv)
-
-    end_time = time.perf_counter()
-    print(f"end : {end_time - start_time:0.6f}")
-    print("palette")
-
-    palette_all = PilImage.new("RGB", (n * 3, 100), "#ffffff")
-    offset_x = 0
-    images = get_images(results_hsv.loc[:, "Cover"], 50)
-    for im in images:
-        palette_all.paste(im.resize((3, 100)), (offset_x, 0))
-        offset_x += 3
-
-    palette_all.save(path_palette_hsv + "/all_covers_hsv.jpg")
-
-
-def donothing():
-    return
-
-
-from pandastable import Table, TableModel
+def palette_path_save(i, mode, folder):
+    name_file = str(i) + "_" + mode + ".jpg"
+    path = folder + "/palettes/" + mode + "/" + name_file
+    return path
 
 
 def open_csv(frame):
@@ -522,80 +407,128 @@ def open_csv(frame):
     pt = Table(frame)
 
 
-def main_window():
-    root = Tk()
-    menubar = Menu(root)
-    file_menu = Menu(menubar, tearoff=0)
-    file_menu.add_command(label="Open", command=donothing)
-    file_menu.add_command(label="Save", command=donothing)
-    file_menu.add_command(label="Save as...", command=donothing)
-    file_menu.add_separator()
-    file_menu.add_command(label="Close", command=donothing)
-    menubar.add_cascade(label="File", menu=file_menu)
-    root.config(menu=menubar)
+def start_analysis(
+        urls,
+        progress,
+        palette_square_size,
+        palette_with_cover,
+        palette_with_replaced_cover,
+        palette_with_count,
+        mode,
+        generate_html,
+        generate_csv,
+        generate_pdf,
+        generate_palettes,
+        max_n_palette
+):
 
-    frame = Frame(root)
-    frame.grid(row=0, column=0)
-    name = "C:/Users/charo/Downloads/Export-e8d05104-a27b-4b14-ace2" \
-           "-f7ddae1ea7c7/Bookshelf cafd6.csv"
-    pt = Table(frame, dataframe=pd.read_csv(name))
-    pt.show()
+    # start_time = time.perf_counter()
 
-    frame2 = Frame(root)
-    frame2.grid(row=0, column=1)
+    n = len(urls)
+    folder_files = save_results_to()
 
-    Label(frame2, text='Column').grid(row=0, column=0)
+    # if mode = "both
+    # dominant_colors_all[x][0] = dominant colors analysed in RGB for x
+    # dominant_colors_all[x][1] = dominant colors analysed in HSV for x
+    # colors_all[x][0] = RGB pixels of x
+    # colors_all[x][1] = HSV pixels of x
+    dominant_colors_all, colors_all, covers = analyse(urls, mode, max_n_palette)
 
-    values = list(pt.model.df.columns)
-    variable = StringVar()
-    option_menu = OptionMenu(
-        frame2,
-        variable,
-        *values,
-    )
-    option_menu.grid(row=0, column=1)
-
-    progress = scrolledtext.ScrolledText(
-        frame2,
-        wrap=tk.WORD,
-        width=30,
-        height=10)
-
-    progress.grid(row=1, columnspan=3)
-    #progress.configure(state="disabled")
-
-    Button(frame2, text="OK",
-           command=lambda: check_column(
-               variable.get(),
-               pt.model.df,
-               progress
-           )).grid(row=0, column=2)
-
-    root.mainloop()
-
-
-def check_column(col, df, progress):
-    try:
-        url = df.loc[0, col]
-        response = requests.get(url)
-        im = PilImage.open(BytesIO(response.content))
-    except MissingSchema:
-        progress.insert(
-            tk.INSERT,
-            "The column should include links to pictures.\n")
-        return False
-    except Exception as e:
-        progress.insert(
-            tk.INSERT,
-            "An error occurred.\n")
-        progress.insert(
-            tk.INSERT,
-            "   " + type(e).__name__ + "\n")
-        return False
+    results = []
+    nb_mode = len(mode)
+    columns = ["Cover"]
+    if generate_palettes:
+        columns.append("Result ")
+    columns.extend(["RGB", "HSV", "Hex"])
+    if generate_palettes:
+        for m in mode:
+            c = columns
+            c[1] += m
+            results.append(pd.DataFrame(columns=c))
     else:
-        progress.insert(tk.INSERT, "OK\n")
-        return True
+        for m in mode:
+            results.append(pd.DataFrame(columns=columns))
 
+    for j in range(nb_mode):
+        for i in range(n):
+            count = []
+            dom_color = []
+            replaced_cover = []
+            count_m, dom_color_m, replaced_cover_m = \
+                count_colors(dominant_colors_all[i][j],
+                             colors_all[i][j],
+                             covers[i])
+            count.append(count_m)
+            dom_color.append(dom_color_m)
+            replaced_cover.append(replaced_cover_m)
 
-if __name__ == "__main__":
-    main_window()
+            if generate_palettes:
+                covers_arg = []
+                count_arg = []
+                if palette_with_count:
+                    count_arg = count_m
+                if palette_with_cover:
+                    covers_arg.append(covers[i])
+                if palette_with_replaced_cover:
+                    covers_arg.append(replaced_cover_m)
+                pal = palette(
+                    dominant_colors_all[i][j],
+                    palette_square_size,
+                    covers=covers_arg,
+                    count=count_arg
+                )
+                palette_dir = palette_path_save(i, mode[j], folder_files)
+                pal.save(palette_dir)
+
+                results[j].loc[results[j].shape[0]] = [
+                    urls[i],
+                    palette_dir,
+                    dom_color_m.tolist(),
+                    list(colorsys.rgb_to_hsv(*dom_color_m)),
+                    "#" + rgb_to_hex(tuple(dom_color_m))
+                ]
+            else:
+                results[j].loc[results[j].shape[0]] = [
+                    urls[i],
+                    dom_color_m.tolist(),
+                    list(colorsys.rgb_to_hsv(*dom_color_m)),
+                    "#" + rgb_to_hex(tuple(dom_color_m))
+                ]
+
+        hsv = pd.DataFrame(results[j].loc[:, "HSV"].copy())
+
+        results[j]["orderRainbow"] = get_order_rainbow(hsv)
+        # results[j] = results[j].sort_values(by=["orderRainbow"])
+
+        if generate_csv:
+            csv_dir = folder_files + "/results_" + mode[j] + ".csv"
+            results[j].to_csv(csv_dir)
+
+        if generate_palettes:
+            format_mode = {"Cover": path_to_cover,
+                           "Result " + mode[j]: path_to_palette}
+        else:
+            format_mode = {"Cover": path_to_cover}
+
+        html_dir = folder_files + "/results_" + mode[j] + ".html"
+
+        if generate_html:
+            results[j].to_html(
+                html_dir,
+                escape=False,
+                formatters=format_mode
+            )
+
+        if generate_pdf:
+            if not generate_html:
+                html_dir = results[j].to_html(
+                    escape=False,
+                    formatters=format_mode
+                )
+            pdf_dir = folder_files + "/results_" + mode[j] + ".pdf"
+            pdfkit.from_file(
+                html_dir,
+                pdf_dir)
+
+    # end_time = time.perf_counter()
+    # print(f"end : {end_time - start_time:0.6f}")
