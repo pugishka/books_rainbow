@@ -294,7 +294,6 @@ def analyse(urls, mode, max_n_palette):
                                )
                            )
                       )
-    print("done")
     dominant_colors_all = result[:, 0]
     colors_all = result[:, 1]
 
@@ -424,15 +423,24 @@ def start_analysis(
 
     # start_time = time.perf_counter()
 
-    n = len(urls)
+    #n = len(urls)
+    n = 5
     folder_files = save_results_to()
+    m = []
+    if mode[0]:
+        m.append("RGB")
+    if mode[1]:
+        m.append("HSV")
+    mode = m
 
     # if mode = "both
     # dominant_colors_all[x][0] = dominant colors analysed in RGB for x
     # dominant_colors_all[x][1] = dominant colors analysed in HSV for x
     # colors_all[x][0] = RGB pixels of x
     # colors_all[x][1] = HSV pixels of x
+    progress.insert(tk.INSERT, "Finding colors...\n")
     dominant_colors_all, colors_all, covers = analyse(urls, mode, max_n_palette)
+    progress.insert(tk.INSERT, "Done\n")
 
     results = []
     nb_mode = len(mode)
@@ -450,7 +458,15 @@ def start_analysis(
             results.append(pd.DataFrame(columns=columns))
 
     for j in range(nb_mode):
+        progress.insert(
+            tk.INSERT,
+            "Finding dominant colors for " + mode[j] + "...\n"
+        )
         for i in range(n):
+            progress.insert(
+                tk.INSERT,
+                u"\nImage number " + str(i+1) + " out of " + str(n)
+            )
             count = []
             dom_color = []
             replaced_cover = []
@@ -495,10 +511,31 @@ def start_analysis(
                     "#" + rgb_to_hex(tuple(dom_color_m))
                 ]
 
+            progress.delete("end-1l", "end")
+
+        progress.insert(
+            tk.INSERT,
+            "Finding dominant colors for " + mode[j] + " : Done\n"
+        )
+
+        progress.insert(
+            tk.INSERT,
+            "Finding rainbow order...\n"
+        )
         hsv = pd.DataFrame(results[j].loc[:, "HSV"].copy())
 
         results[j]["orderRainbow"] = get_order_rainbow(hsv)
         # results[j] = results[j].sort_values(by=["orderRainbow"])
+
+        progress.insert(
+            tk.INSERT,
+            "Finding rainbow order : Done\n"
+        )
+
+        progress.insert(
+            tk.INSERT,
+            "Generating files...\n"
+        )
 
         if generate_csv:
             csv_dir = folder_files + "/results_" + mode[j] + ".csv"
@@ -529,6 +566,16 @@ def start_analysis(
             pdfkit.from_file(
                 html_dir,
                 pdf_dir)
+
+        progress.insert(
+            tk.INSERT,
+            "Generating files : Done\n"
+        )
+
+        progress.insert(
+            tk.INSERT,
+            "\nResults are ready !\n"
+        )
 
     # end_time = time.perf_counter()
     # print(f"end : {end_time - start_time:0.6f}")

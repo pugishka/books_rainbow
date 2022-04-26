@@ -7,16 +7,30 @@ from requests.exceptions import MissingSchema
 import tkinter as tk
 
 
-def check_column(col, df, progress, start):
+def check_params(**kwargs):
+    col = kwargs["col"]
+    df = kwargs["table"]
+    csv = kwargs["csv"]
+    html = kwargs["html"]
+    pdf = kwargs["pdf"]
+    rgb = kwargs["mode"][0]
+    hsv = kwargs["mode"][1]
+    progress = kwargs["progress"]
+    start = kwargs["start"]
+
     try:
         progress.delete(1.0, tk.END)
         url = df.loc[0, col]
         response = requests.get(url)
         im = PilImage.open(BytesIO(response.content))
+    except KeyError:
+        progress.insert(
+            tk.INSERT,
+            "Choose a column.")
     except MissingSchema:
         progress.insert(
             tk.INSERT,
-            "The column should include links to pictures.\n")
+            "The column should include links to pictures.")
         start.set(False)
     except Exception as e:
         progress.insert(
@@ -27,8 +41,13 @@ def check_column(col, df, progress, start):
             "   " + type(e).__name__ + "\n")
         start.set(False)
     else:
-        progress.insert(tk.INSERT, "Starting\n")
-        start.set(True)
+        if not csv.get() and not html.get() and not pdf.get():
+            progress.insert(tk.INSERT, "Select at least one file to generate")
+        elif not rgb.get() and not hsv.get():
+            progress.insert(tk.INSERT, "Select at least one mode")
+        else:
+            progress.insert(tk.INSERT, "Starting...\n")
+            start.set(True)
 
 
 def get_file(url):
