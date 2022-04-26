@@ -5,8 +5,8 @@ from tkinter import _setit
 from tkinter.ttk import Separator
 import pandas as pd
 from pandastable import Table, TableModel
-import bookCoversColors.controller as con
-import bookCoversColors.main as main
+import books_rainbow.controller as con
+import books_rainbow.main as main
 import threading
 
 

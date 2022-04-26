@@ -1,3 +1,8 @@
-import setuptools
+from setuptools import setup
 
-setuptools.setup(name='bookCoversColors', packages=['bookCoversColors'])
+setup(
+    name='books_rainbow',
+    packages=['books_rainbow'],
+    author="Nadia Charonov",
+    author_email="charonovnadia@gmail,com",
+)
