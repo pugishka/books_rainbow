@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
@@ -11,10 +13,6 @@ import colorsys
 from concurrent.futures import as_completed
 from requests_futures.sessions import FuturesSession
 from sklearn.metrics.pairwise import euclidean_distances
-import pdfkit
-
-config = pdfkit.configuration(
-    wkhtmltopdf='C:\\Program Files\\wkhtmltopdf\\bin\\wkhtmltopdf.exe')
 
 # Style for the HTML and PDF files
 STYLE_HTML = """
@@ -195,7 +193,9 @@ def get_images(progress, urls, max_width):
     with FuturesSession() as session:
         futures = [session.get(urls[i], stream=True) for i in range(len(urls))]
         for future in as_completed(futures):
+            progress.configure(state='normal')
             progress.delete("end-1l", "end")
+            progress.configure(state='disabled')
             progress_update(
                 progress,
                 u"\nRetrieved " + str(count) + " covers out of " +
@@ -346,7 +346,9 @@ def analyse(progress, urls, mode, max_n_palette):
     )
     result = []
     for i in range(len(urls)):
+        progress.configure(state='normal')
         progress.delete("end-1l", "end")
+        progress.configure(state='disabled')
         progress_update(
             progress,
             u"\nCover #" + str(i+1) + " out of " + str(len(urls))
@@ -531,11 +533,13 @@ def progress_update(progress, text):
         Text to insert in the text field.
 
     """
+    progress.configure(state='normal')
     progress.insert(
         tk.INSERT,
         text,
     )
     progress.see("end")
+    progress.configure(state='disabled')
 
 
 def start_analysis(
@@ -549,7 +553,7 @@ def start_analysis(
         mode,
         generate_html,
         generate_csv,
-        generate_pdf,
+        # generate_pdf,
         generate_palettes,
         max_n_palette
 ):
@@ -589,7 +593,7 @@ def start_analysis(
         Generate the CSV file ?
 
     generate_pdf : bool
-        Generate the PDF file ?
+        Generate the PDF file ? (removed)
 
     generate_palettes : bool
         Generate the palettes ?
@@ -598,7 +602,6 @@ def start_analysis(
         Average number of dominant colors to find for each cover.
     """
 
-    urls = urls[:10]
     n = len(urls)
     folder_files = save_results_to()
     m = []
@@ -622,7 +625,12 @@ def start_analysis(
         columns.append("Result ")
     columns.extend(["RGB", "HSV", "Hex"])
     if generate_palettes:
+        pal_p = folder_files + "/palettes"
+        if not os.path.exists(pal_p):
+            os.mkdir(pal_p)
         for m in mode:
+            if not os.path.exists(pal_p + "/" + m):
+                os.mkdir(pal_p + "/" + m)
             c = columns
             c[1] += m
             results.append(pd.DataFrame(columns=c))
@@ -635,7 +643,9 @@ def start_analysis(
             "\nFinding dominant colors for " + mode[j] + "...\n"
         )
         for i in range(n):
+            progress.configure(state='normal')
             progress.delete("end-1l", "end")
+            progress.configure(state='disabled')
             progress_update(
                 progress,
                 u"\nImage number " + str(i+1) + " out of " + str(n)
@@ -680,7 +690,6 @@ def start_analysis(
                             len(list(colorsys.rgb_to_hsv(*dom_color_m)))
                         )
                     ],
-                    round(*list(colorsys.rgb_to_hsv(*dom_color_m)), 3),
                     "#" + rgb_to_hex(tuple(dom_color_m))
                 ]
             else:
@@ -743,25 +752,25 @@ def start_analysis(
             html_open.write(file_html)
             html_open.close()
 
-        if generate_pdf:
-            pdf_dir = folder_files + "/results_" + mode[j] + ".pdf"
-            if not generate_html:
-                file_html = results[j].to_html(
-                    escape=False,
-                    formatters=format_mode
-                )
-                file_html = STYLE_HTML + file_html
-                pdfkit.from_string(
-                    file_html,
-                    pdf_dir,
-                    configuration=config
-                )
-            else:
-                pdfkit.from_file(
-                    html_dir,
-                    pdf_dir,
-                    configuration=config
-                )
+        # if generate_pdf:
+        #     pdf_dir = folder_files + "/results_" + mode[j] + ".pdf"
+        #     if not generate_html:
+        #         file_html = results[j].to_html(
+        #             escape=False,
+        #             formatters=format_mode
+        #         )
+        #         file_html = STYLE_HTML + file_html
+        #         pdfkit.from_string(
+        #             file_html,
+        #             pdf_dir,
+        #             configuration=config
+        #         )
+        #     else:
+        #         pdfkit.from_file(
+        #             html_dir,
+        #             pdf_dir,
+        #             configuration=config
+        #         )
 
         progress_update(
             progress,

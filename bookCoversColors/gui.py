@@ -5,8 +5,8 @@ from tkinter import _setit
 from tkinter.ttk import Separator
 import pandas as pd
 from pandastable import Table, TableModel
-import controller as con
-import main
+import bookCoversColors.controller as con
+import bookCoversColors.main as main
 import threading
 
 
@@ -35,7 +35,7 @@ class App(tk.Tk):
     generate_palettes : BooleanVar
         Generate palette files ?
     generate_pdf : BooleanVar
-        Generate PDF file ?
+        Generate PDF file ? (Removed)
     max_n_palette : DoubleVar
         Average number of dominant colors to find.
     ok : Button
@@ -151,7 +151,7 @@ class App(tk.Tk):
                     [self.RGB.get(), self.HSV.get()],
                     self.generate_html.get(),
                     self.generate_csv.get(),
-                    self.generate_pdf.get(),
+                    #self.generate_pdf.get(),
                     self.generate_palettes.get(),
                     int(self.max_n_palette.get())
                 ),
@@ -200,7 +200,7 @@ class App(tk.Tk):
         self.url = StringVar(self)
         self.file_menu.add_command(
             label="Open",
-            command=lambda: [con.get_file(self.url),
+            command=lambda: [con.get_file(self.progress, self.url),
                              self.update_table()]
         )
         self.file_menu.add_separator()
@@ -218,7 +218,7 @@ class App(tk.Tk):
         self.HSV = BooleanVar()
         self.generate_csv = BooleanVar()
         self.generate_html = BooleanVar()
-        self.generate_pdf = BooleanVar()
+        #self.generate_pdf = BooleanVar()
         self.max_n_palette = DoubleVar()
         self.generate_palettes = BooleanVar()
         self.generate_palettes.set(True)
@@ -298,7 +298,7 @@ class App(tk.Tk):
                     "choices": {
                         "CSV": self.generate_csv,
                         "HTML": self.generate_html,
-                        "PDF": self.generate_pdf
+                        #"PDF": self.generate_pdf
                     }
                 },
             },
@@ -422,7 +422,7 @@ class App(tk.Tk):
                 table=self.table.model.df,
                 csv=self.generate_csv,
                 html=self.generate_html,
-                pdf=self.generate_pdf,
+                #pdf=self.generate_pdf,
                 mode=[self.RGB, self.HSV],
                 progress=self.progress,
                 start=self.start
@@ -481,7 +481,8 @@ class App(tk.Tk):
             wrap=tk.WORD,
             # width=40,
             height=10,
-            borderwidth=0
+            borderwidth=0,
+            state="disabled"
         )
         self.progress.grid(
             row=3,
@@ -508,7 +509,3 @@ class App(tk.Tk):
                 command=_setit(self.column_covers, choice)
             )
 
-
-if __name__ == "__main__":
-    testObj = App()
-    testObj.mainloop()

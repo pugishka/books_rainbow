@@ -6,6 +6,27 @@ from requests.exceptions import MissingSchema
 import tkinter as tk
 
 
+def progress_update(progress, text):
+    """
+    Update progress text.
+
+    Parameters
+    ----------
+    progress : tkinter.ScrolledText
+        ScrolledText widget to show progress.
+    text : str
+        Text to insert in the text field.
+
+    """
+    progress.configure(state='normal')
+    progress.insert(
+        tk.INSERT,
+        text,
+    )
+    progress.see("end")
+    progress.configure(state='disabled')
+
+
 def check_params(**kwargs):
     """
     Checks if the selected options are correct.
@@ -20,61 +41,84 @@ def check_params(**kwargs):
     df = kwargs["table"]
     csv = kwargs["csv"]
     html = kwargs["html"]
-    pdf = kwargs["pdf"]
+    # pdf = kwargs["pdf"]
     rgb = kwargs["mode"][0]
     hsv = kwargs["mode"][1]
     progress = kwargs["progress"]
     start = kwargs["start"]
 
     try:
+        progress.configure(state='normal')
         progress.delete(1.0, tk.END)
+        progress.configure(state='disabled')
         url = df.loc[0, col]
         response = requests.get(url)
         im = PilImage.open(BytesIO(response.content))
     except KeyError:
-        progress.insert(
-            tk.INSERT,
-            "Choose a column.")
+        progress_update(
+            progress,
+            "Choose a column."
+        )
     except MissingSchema:
-        progress.insert(
-            tk.INSERT,
-            "The column should include links to pictures.")
+        progress_update(
+            progress,
+            "The column should include links to pictures."
+        )
         start.set(False)
     except Exception as e:
-        progress.insert(
-            tk.INSERT,
-            "An error occurred.\n")
-        progress.insert(
-            tk.INSERT,
-            "   " + type(e).__name__ + "\n")
+        progress_update(
+            progress,
+            "An error occurred.\n"
+        )
+        progress_update(
+            progress,
+            "   " + type(e).__name__ + "\n"
+        )
         start.set(False)
     else:
-        if not csv.get() and not html.get() and not pdf.get():
-            progress.insert(tk.INSERT, "Select at least one file to generate")
+        if not csv.get() and not html.get():  # and not pdf.get():
+            progress_update(progress, "Select at least one file to generate")
         elif not rgb.get() and not hsv.get():
-            progress.insert(tk.INSERT, "Select at least one mode")
+            progress_update(progress, "Select at least one mode")
         else:
-            progress.insert(tk.INSERT, "Starting...\n")
+            progress_update(progress, "Starting...\n")
             start.set(True)
 
 
-def get_file(url):
+def get_file(progress, url):
     """
     Shows dialogue window to open the CSV file.
 
     Parameters
     ----------
+    progress : tkinter.ScrolledText
+        ScrolledText widget to show progress.
     url : StringVar
         Variable of the link to the CSV file.
 
     """
-    root = tk.Tk()
-    root.withdraw()
-    file = filedialog.askopenfilename(
-        initialdir="C:/Users/MainFrame/Desktop/",
-        title="Open CSV file",
-        filetypes=(("CSV Files", "*.csv"),)
-    )
-    url.set(file)
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        file = filedialog.askopenfilename(
+            initialdir="C:/Users/MainFrame/Desktop/",
+            title="Open CSV file",
+            filetypes=(("CSV Files", "*.csv"),)
+        )
+    except Exception as e:
+        progress.configure(state='normal')
+        progress.delete(1.0, tk.END)
+        progress.configure(state='disabled')
+        progress_update(
+            progress,
+            "An error occurred.\n"
+        )
+        progress_update(
+            progress,
+            "   " + type(e).__name__ + "\n"
+        )
+    else:
+        url.set(file)
+
 
 
