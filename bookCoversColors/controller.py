@@ -1,5 +1,4 @@
 from tkinter import filedialog
-
 import requests
 from io import BytesIO
 from PIL import Image as PilImage
@@ -8,6 +7,15 @@ import tkinter as tk
 
 
 def check_params(**kwargs):
+    """
+    Checks if the selected options are correct.
+
+    Parameters
+    ----------
+    **kwargs
+        The options to verify.
+
+    """
     col = kwargs["col"]
     df = kwargs["table"]
     csv = kwargs["csv"]
@@ -54,8 +62,11 @@ def get_file(url):
     """
     Shows dialogue window to open the CSV file.
 
-    Returns:
-        file (str): directory of the file
+    Parameters
+    ----------
+    url : StringVar
+        Variable of the link to the CSV file.
+
     """
     root = tk.Tk()
     root.withdraw()
@@ -65,3 +76,5 @@ def get_file(url):
         filetypes=(("CSV Files", "*.csv"),)
     )
     url.set(file)
+
+

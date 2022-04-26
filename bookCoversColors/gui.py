@@ -1,8 +1,8 @@
 import tkinter as tk
 from tkinter import *
-from tkinter import filedialog, scrolledtext, ttk, _setit
+from tkinter import scrolledtext
+from tkinter import _setit
 from tkinter.ttk import Separator
-
 import pandas as pd
 from pandastable import Table, TableModel
 import controller as con
@@ -11,7 +11,74 @@ import threading
 
 
 class App(tk.Tk):
+    """
+    GUI class.
 
+    Attributes
+    ----------
+    HSV : BooleanVar
+        Evaluate in HSV ?
+    RGB : BooleanVar
+        Evaluate in RGB ?
+    all_columns : list of str
+        Columns in the opened CSV.
+    column_covers : StringVar
+        Selected column.
+    file_menu : Menu
+        Top bar menu.
+    frame_info : Frame
+        Frame containing all the options.
+    generate_csv : BooleanVar
+        Generate CSV file ?
+    generate_html : BooleanVar
+        Generate HTML file ?
+    generate_palettes : BooleanVar
+        Generate palette files ?
+    generate_pdf : BooleanVar
+        Generate PDF file ?
+    max_n_palette : DoubleVar
+        Average number of dominant colors to find.
+    ok : Button
+        Button to confirm.
+    option_menu : OptionMenu
+        Menu to choose from the different columns.
+    palette_square_size : DoubleVar
+        Size of the squares in the palettes.
+    palette_with_count : BooleanVar
+        Add percentage of each dominant color to palette ?
+    palette_with_cover : BooleanVar
+        Add cover to palette ?
+    palette_with_replaced_cover : BooleanVar
+        Add cover replaced with dominant colors to palette ?
+    progress : ScrolledText
+        Text field to show progress.
+    start : BooleanVar
+        True if the analysis can start.
+    table : Table
+        Opened CSV table.
+    thread_exe : Thread
+        Thread to execute functions from main.py.
+    url : StringVar
+        Link to the CSV file.
+
+    Methods
+    -------
+    __init__:
+        Constructor.
+    __start_analyse__:
+        Create Thread to analyse the table.
+    switch_state:
+        Enable or disable some options.
+    __create_menu__:
+        Constructor for the top bar menu.
+    __add_w_info__:
+        Constructor for the list of option widgets.
+    __add_info__:
+        Constructor for the options.
+    update_table:
+        Update after a CSV file is opened.
+
+    """
     def __init__(self, *args, **kwargs):
         tk.Tk.__init__(self, *args, **kwargs)
 
@@ -20,25 +87,7 @@ class App(tk.Tk):
 
         self.start.trace(
             'w',
-            # TODO : make sure thread works, is closed, and disables rest of
-            #  window
-            lambda *x: threading.Thread(
-                target=main.start_analysis,
-                args=(
-                    list(self.table.model.df[self.column_covers.get()]),
-                    self.progress,
-                    int(self.palette_square_size.get()),
-                    self.palette_with_cover.get(),
-                    self.palette_with_replaced_cover.get(),
-                    self.palette_with_count.get(),
-                    [self.RGB.get(), self.HSV.get()],
-                    self.generate_html.get(),
-                    self.generate_csv.get(),
-                    self.generate_pdf.get(),
-                    self.generate_palettes.get(),
-                    int(self.max_n_palette.get())
-                )
-            ).start()
+            lambda *x: self.__start_analyse__(),
         )
 
         self.wm_title("Book cover sort")
@@ -72,16 +121,52 @@ class App(tk.Tk):
             width=400,
         )
 
-        frame_info = Frame(self)
-        frame_info.grid(row=0, column=1, sticky="we")
-        frame_info.config(
+        self.frame_info = Frame(self)
+        self.frame_info.grid(row=0, column=1, sticky="we")
+        self.frame_info.config(
             # width=100,
         )
-        self.__add_info__(frame_info)
+        self.__add_info__(self.frame_info)
 
         # self.grid_columnconfigure(0, weight=3)
         self.grid_columnconfigure(1, weight=1)
         # self.col
+
+    def __start_analyse__(self):
+        if self.start.get():
+            self.ok.config(
+                state="disabled"
+            )
+            self.file_menu.entryconfig("Open", state="disabled")
+            self.thread_exe = threading.Thread(
+                target=main.start_analysis,
+                args=(
+                    self.start,
+                    list(self.table.model.df[self.column_covers.get()]),
+                    self.progress,
+                    int(self.palette_square_size.get()),
+                    self.palette_with_cover.get(),
+                    self.palette_with_replaced_cover.get(),
+                    self.palette_with_count.get(),
+                    [self.RGB.get(), self.HSV.get()],
+                    self.generate_html.get(),
+                    self.generate_csv.get(),
+                    self.generate_pdf.get(),
+                    self.generate_palettes.get(),
+                    int(self.max_n_palette.get())
+                ),
+                daemon=True
+            )
+            # self.thread_exe = threading.Thread(
+            #     target=main.test,
+            #     args=[self.start]
+            # )
+            self.thread_exe.start()
+        else:
+            self.ok.config(
+                state="normal"
+            )
+            self.file_menu.entryconfig("Open", state="normal")
 
     @staticmethod
     def switch_state(*args):
@@ -108,19 +193,19 @@ class App(tk.Tk):
 
     def __create_menu__(self):
         menubar = Menu(self)
-        file_menu = Menu(
+        self.file_menu = Menu(
             menubar,
             tearoff=0
         )
         self.url = StringVar(self)
-        file_menu.add_command(
+        self.file_menu.add_command(
             label="Open",
             command=lambda: [con.get_file(self.url),
                              self.update_table()]
         )
-        file_menu.add_separator()
-        file_menu.add_command(label="Close", command=self.quit)
-        menubar.add_cascade(label="File", menu=file_menu)
+        self.file_menu.add_separator()
+        self.file_menu.add_command(label="Close", command=self.quit)
+        menubar.add_cascade(label="File", menu=self.file_menu)
         self.config(menu=menubar)
 
     def __add_w_info__(self, frame):
@@ -329,7 +414,7 @@ class App(tk.Tk):
             # )
             # n_sep += 1
 
-        ok = Button(
+        self.ok = Button(
             frame,
             text="OK",
             command=lambda: con.check_params(
@@ -344,7 +429,7 @@ class App(tk.Tk):
             )
         )
 
-        ok.grid(
+        self.ok.grid(
             row=len(widgets) + n_sep + 1,
             columnspan=3,
             column=0,
